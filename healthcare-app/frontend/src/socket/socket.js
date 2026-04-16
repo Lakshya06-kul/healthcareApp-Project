@@ -9,6 +9,9 @@ export const socket = io(SOCKET_URL, {
 
 export const connectSocket = () => {
   if (!socket.connected) {
+    socket.auth = {
+      token: localStorage.getItem("token") || ""
+    };
     socket.connect();
   }
   return socket;

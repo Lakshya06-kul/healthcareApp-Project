@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   connectSocket,
   offSlotBooked,
@@ -9,38 +10,55 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-const doctors = [
-  { id: "doc001", name: "Dr. Hamza", fee: 1200 },
-  { id: "doc002", name: "Dr. Areeba", fee: 1500 }
-];
-
-const initialAvailability = {
-  doc001: {
-    "2026-04-20": ["10:00", "11:00", "12:00"],
-    "2026-04-21": ["09:00", "10:30"]
-  },
-  doc002: {
-    "2026-04-20": ["13:00", "14:00"],
-    "2026-04-21": ["15:00", "16:00"]
-  }
-};
-
 export default function BookingPage() {
-  const [form, setForm] = useState({ doctorId: doctors[0].id, date: "", time: "" });
-  const [availability, setAvailability] = useState(initialAvailability);
+  const location = useLocation();
+  const [doctors, setDoctors] = useState([]);
+  const [form, setForm] = useState({ doctorId: "", date: "", time: "" });
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const preselectedDoctorId = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
+    return searchParams.get("doctorId") || "";
+  }, [location.search]);
+
   const selectedDoctor = useMemo(
-    () => doctors.find((doctor) => doctor.id === form.doctorId),
-    [form.doctorId]
+    () => doctors.find((doctor) => String(doctor._id) === String(form.doctorId)),
+    [doctors, form.doctorId]
   );
 
   const availableSlots = useMemo(() => {
     if (!form.date) return [];
-    return availability[form.doctorId]?.[form.date] || [];
-  }, [availability, form.date, form.doctorId]);
+    return selectedDoctor?.availability?.find((entry) => entry.date === form.date)?.slots || [];
+  }, [form.date, selectedDoctor]);
+
+  useEffect(() => {
+    const loadDoctors = async () => {
+      try {
+        const response = await fetch(`${API_URL}/doctor`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          setErrorMessage(data.msg || "Failed to load doctors");
+          return;
+        }
+
+        setDoctors(data.doctors || []);
+      } catch (_error) {
+        setErrorMessage("Network error while loading doctors.");
+      }
+    };
+
+    loadDoctors();
+  }, []);
+
+  useEffect(() => {
+    if (!form.doctorId && doctors.length > 0) {
+      const found = doctors.find((doctor) => String(doctor._id) === String(preselectedDoctorId));
+      setForm((prev) => ({ ...prev, doctorId: String(found?._id || doctors[0]._id) }));
+    }
+  }, [doctors, form.doctorId, preselectedDoctorId]);
 
   useEffect(() => {
     connectSocket();
@@ -50,15 +68,21 @@ export default function BookingPage() {
         return;
       }
 
-      setAvailability((prev) => ({
-        ...prev,
-        [payload.doctorId]: {
-          ...(prev[payload.doctorId] || {}),
-          [payload.date]: payload.availableSlots
-        }
-      }));
+      setDoctors((prev) =>
+        prev.map((doctor) =>
+          String(doctor._id) !== String(payload.doctorId)
+            ? doctor
+            : {
+              ...doctor,
+              availability: [
+                ...(doctor.availability || []).filter((entry) => entry.date !== payload.date),
+                { date: payload.date, slots: payload.availableSlots }
+              ]
+            }
+        )
+      );
 
-      if (payload.doctorId === form.doctorId && payload.date === form.date) {
+      if (String(payload.doctorId) === String(form.doctorId) && payload.date === form.date) {
         setStatusMessage(`Live update: slots refreshed for ${payload.date}`);
         setErrorMessage("");
       }
@@ -69,20 +93,24 @@ export default function BookingPage() {
         return;
       }
 
-      setAvailability((prev) => {
-        const existingSlots = prev[payload.doctorId]?.[payload.date] || [];
-        if (existingSlots.length === 0) return prev;
-
-        return {
-          ...prev,
-          [payload.doctorId]: {
-            ...(prev[payload.doctorId] || {}),
-            [payload.date]: existingSlots.filter((slot) => slot !== payload.time)
+      setDoctors((prev) =>
+        prev.map((doctor) => {
+          if (String(doctor._id) !== String(payload.doctorId)) {
+            return doctor;
           }
-        };
-      });
 
-      if (payload.doctorId === form.doctorId && payload.date === form.date) {
+          return {
+            ...doctor,
+            availability: (doctor.availability || []).map((entry) =>
+              entry.date === payload.date
+                ? { ...entry, slots: entry.slots.filter((slot) => slot !== payload.time) }
+                : entry
+            )
+          };
+        })
+      );
+
+      if (String(payload.doctorId) === String(form.doctorId) && payload.date === form.date) {
         setStatusMessage(`Slot ${payload.time} was booked by another user.`);
         if (form.time === payload.time) {
           setForm((prev) => ({ ...prev, time: "" }));
@@ -154,20 +182,34 @@ export default function BookingPage() {
         return;
       }
 
-      setAvailability((prev) => {
-        const existingSlots = prev[form.doctorId]?.[form.date] || [];
-        return {
-          ...prev,
-          [form.doctorId]: {
-            ...(prev[form.doctorId] || {}),
-            [form.date]: existingSlots.filter((slot) => slot !== form.time)
+      if (data?.appointment?._id) {
+        localStorage.setItem("lastAppointmentId", data.appointment._id);
+      }
+
+      if (data?.appointment?.channelName) {
+        localStorage.setItem("lastAppointmentChannelName", data.appointment.channelName);
+      }
+
+      setDoctors((prev) =>
+        prev.map((doctor) => {
+          if (String(doctor._id) !== String(form.doctorId)) {
+            return doctor;
           }
-        };
-      });
+
+          return {
+            ...doctor,
+            availability: (doctor.availability || []).map((entry) =>
+              entry.date === form.date
+                ? { ...entry, slots: entry.slots.filter((slot) => slot !== form.time) }
+                : entry
+            )
+          };
+        })
+      );
 
       setStatusMessage("Appointment booked successfully.");
       setForm((prev) => ({ ...prev, time: "" }));
-    } catch (error) {
+    } catch (_error) {
       setErrorMessage("Network error while booking appointment.");
     } finally {
       setIsSubmitting(false);
@@ -175,20 +217,27 @@ export default function BookingPage() {
   };
 
   return (
-    <section className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow">
-      <h1 className="text-2xl font-bold">Booking Page</h1>
-      <p className="mb-6 text-slate-600">Choose doctor, date and time</p>
+    <section className="mx-auto max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-md">
+      <h1 className="text-3xl font-bold">Book Appointment</h1>
+      <p className="mb-6 text-sm text-slate-600">Choose doctor, date and time for your meeting.</p>
+
+      {doctors.length === 0 && !errorMessage && (
+        <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+          No doctor profiles are available yet.
+        </p>
+      )}
 
       <form onSubmit={onSubmit} className="space-y-4">
         <select
           name="doctorId"
           value={form.doctorId}
           onChange={onChange}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-cyan-700"
+          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-teal-700"
+          disabled={doctors.length === 0}
         >
           {doctors.map((doctor) => (
-            <option key={doctor.id} value={doctor.id}>
-              {doctor.name}
+            <option key={doctor._id} value={doctor._id}>
+              {doctor.userId?.name || "Unnamed doctor"} - Rs. {doctor.price}
             </option>
           ))}
         </select>
@@ -198,7 +247,7 @@ export default function BookingPage() {
           name="date"
           value={form.date}
           onChange={onChange}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-cyan-700"
+          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-teal-700"
           required
         />
 
@@ -217,11 +266,10 @@ export default function BookingPage() {
                   key={slot}
                   type="button"
                   onClick={() => setForm((prev) => ({ ...prev, time: slot }))}
-                  className={`rounded-lg border px-3 py-1.5 text-sm ${
-                    form.time === slot
-                      ? "border-cyan-700 bg-cyan-700 text-white"
-                      : "border-slate-300 bg-white text-slate-700 hover:border-cyan-700"
-                  }`}
+                  className={`rounded-lg border px-3 py-1.5 text-sm ${form.time === slot
+                      ? "border-teal-700 bg-teal-700 text-white"
+                      : "border-slate-300 bg-white text-slate-700 hover:border-teal-700"
+                    }`}
                 >
                   {slot}
                 </button>
@@ -231,7 +279,7 @@ export default function BookingPage() {
         </div>
 
         <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700">
-          Consultation fee: Rs. {selectedDoctor?.fee}
+          Consultation fee: Rs. {selectedDoctor?.price || "N/A"}
         </div>
 
         {statusMessage && (
@@ -249,7 +297,7 @@ export default function BookingPage() {
         <button
           type="submit"
           disabled={isSubmitting || !form.date || !form.time}
-          className="w-full rounded-lg bg-cyan-700 px-4 py-2 font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full rounded-xl bg-teal-700 px-4 py-2.5 font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? "Booking..." : "Book Appointment"}
         </button>
