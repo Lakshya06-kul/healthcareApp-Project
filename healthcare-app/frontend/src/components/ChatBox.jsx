@@ -8,12 +8,19 @@ import {
   socket
 } from "../socket/socket";
 
-export default function ChatBox({ appointmentId = "appointment-demo-101", senderId = "user-demo-1" }) {
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+export default function ChatBox({ appointmentId, senderId }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [slotNotice, setSlotNotice] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!appointmentId || !senderId) {
+      return;
+    }
+
     connectSocket();
 
     socket.emit("joinRoom", { appointmentId });
@@ -28,7 +35,7 @@ export default function ChatBox({ appointmentId = "appointment-demo-101", sender
         ...prev,
         {
           id: payload._id || `${Date.now()}-${Math.random()}`,
-          sender: payload.senderId === senderId ? "You" : payload.senderId || "User",
+          sender: String(payload.senderId) === String(senderId) ? "You" : payload.senderId || "User",
           text: payload.text || payload.message || "",
           createdAt: payload.createdAt || payload.timestamp || new Date().toISOString()
         }
@@ -39,29 +46,66 @@ export default function ChatBox({ appointmentId = "appointment-demo-101", sender
       setSlotNotice(`Slots updated for ${payload?.date || "selected date"}`);
     };
 
+    const handleErrorMessage = (payload) => {
+      if (payload?.msg) {
+        setError(payload.msg);
+      }
+    };
+
     onReceiveMessage(handleReceiveMessage);
     onSlotUpdated(handleSlotUpdated);
+    socket.on("errorMessage", handleErrorMessage);
 
     return () => {
       offReceiveMessage(handleReceiveMessage);
       offSlotUpdated(handleSlotUpdated);
+      socket.off("errorMessage", handleErrorMessage);
     };
   }, [appointmentId, senderId]);
 
-  const sendMessage = (e) => {
+  const sendMessage = async (e) => {
     e.preventDefault();
 
     const text = input.trim();
     if (!text) return;
 
-    socket.emit("sendMessage", {
-      appointmentId,
-      message: text,
-      senderId
-    });
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setError("Login required to send messages.");
+      return;
+    }
 
-    setInput("");
+    try {
+      setError("");
+      const response = await fetch(`${API_URL}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ appointmentId, text })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.msg || "Failed to send message");
+        return;
+      }
+
+      setInput("");
+    } catch (_error) {
+      setError("Network error while sending message.");
+    }
   };
+
+  if (!appointmentId || !senderId) {
+    return (
+      <section className="rounded-2xl bg-white p-6 shadow">
+        <h1 className="mb-2 text-2xl font-bold">Chat Page</h1>
+        <p className="text-slate-600">A valid appointment and signed-in user are required.</p>
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-2xl bg-white p-6 shadow">
@@ -84,6 +128,8 @@ export default function ChatBox({ appointmentId = "appointment-demo-101", sender
           </div>
         ))}
       </div>
+
+      {error && <p className="mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       <form onSubmit={sendMessage} className="flex gap-2">
         <input

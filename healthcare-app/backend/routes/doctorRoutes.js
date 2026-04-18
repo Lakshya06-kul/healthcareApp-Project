@@ -3,12 +3,16 @@ const router = express.Router();
 
 const authMiddleware = require("../middleware/authMiddleware");
 const {
-  createDoctorProfile,
+  getDoctors,
+  getMyDoctorProfile,
+  upsertDoctorProfile,
   setAvailability,
   toggleOnlineStatus
 } = require("../controllers/doctorController");
 
-router.post("/profile", authMiddleware, createDoctorProfile);
+router.get("/", getDoctors);
+router.get("/me", authMiddleware, getMyDoctorProfile);
+router.post("/profile", authMiddleware, upsertDoctorProfile);
 router.post("/availability", authMiddleware, setAvailability);
 router.put("/toggle", authMiddleware, toggleOnlineStatus);
 

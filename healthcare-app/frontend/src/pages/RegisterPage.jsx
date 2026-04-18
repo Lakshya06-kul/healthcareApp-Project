@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -57,43 +57,47 @@ export default function RegisterPage() {
   };
 
   return (
-    <section className="mx-auto max-w-md rounded-2xl bg-white p-6 shadow">
-      <h1 className="mb-1 text-2xl font-bold text-slate-900">Register</h1>
-      <p className="mb-6 text-sm text-slate-600">Create a doctor or patient account</p>
+    <section className="mx-auto max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-lg">
+      <h1 className="mb-1 text-3xl font-bold text-slate-900">Create Account</h1>
+      <p className="mb-6 text-sm text-slate-600">Choose your role and complete registration</p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="block text-sm font-semibold text-slate-700">Full Name</label>
         <input
           type="text"
           name="name"
           value={form.name}
           onChange={handleChange}
           placeholder="Full name"
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-cyan-700"
+          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-teal-700"
           required
         />
+        <label className="block text-sm font-semibold text-slate-700">Email</label>
         <input
           type="email"
           name="email"
           value={form.email}
           onChange={handleChange}
           placeholder="Email"
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-cyan-700"
+          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-teal-700"
           required
         />
+        <label className="block text-sm font-semibold text-slate-700">Password</label>
         <input
           type="password"
           name="password"
           value={form.password}
           onChange={handleChange}
           placeholder="Password"
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-cyan-700"
+          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-teal-700"
           required
         />
+        <label className="block text-sm font-semibold text-slate-700">Role</label>
         <select
           name="role"
           value={form.role}
           onChange={handleChange}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-cyan-700"
+          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-teal-700"
         >
           <option value="patient">Patient</option>
           <option value="doctor">Doctor</option>
@@ -102,7 +106,7 @@ export default function RegisterPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-lg bg-cyan-700 px-4 py-2 font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full rounded-xl bg-teal-700 px-4 py-2.5 font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? "Registering..." : "Register"}
         </button>
@@ -117,6 +121,13 @@ export default function RegisterPage() {
           </p>
         )}
       </form>
+
+      <p className="mt-5 text-center text-sm text-slate-600">
+        Already registered?{" "}
+        <Link to="/login" className="font-semibold text-teal-700 hover:text-teal-800">
+          Back to login
+        </Link>
+      </p>
     </section>
   );
 }

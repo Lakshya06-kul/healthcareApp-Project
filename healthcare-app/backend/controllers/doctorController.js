@@ -1,7 +1,36 @@
 const Doctor = require("../models/doctor");
 const User = require("../models/user");
 
-exports.createDoctorProfile = async (req, res) => {
+exports.getDoctors = async (_req, res) => {
+  try {
+    const doctors = await Doctor.find()
+      .populate("userId", "name")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({ doctors });
+  } catch (error) {
+    return res.status(500).json({ msg: "Server error", error: error.message });
+  }
+};
+
+exports.getMyDoctorProfile = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const doctor = await Doctor.findOne({ userId }).populate("userId", "name email role").lean();
+
+    if (!doctor) {
+      return res.status(404).json({ msg: "Doctor profile not found" });
+    }
+
+    return res.json({ doctor });
+  } catch (error) {
+    return res.status(500).json({ msg: "Server error", error: error.message });
+  }
+};
+
+exports.upsertDoctorProfile = async (req, res) => {
   try {
     const { specialization, price } = req.body;
     const userId = req.user.userId;
@@ -19,18 +48,21 @@ exports.createDoctorProfile = async (req, res) => {
       return res.status(403).json({ msg: "Only users with doctor role can create profile" });
     }
 
-    const existingDoctor = await Doctor.findOne({ userId });
-    if (existingDoctor) {
-      return res.status(400).json({ msg: "Doctor profile already exists" });
-    }
+    const doctor = await Doctor.findOneAndUpdate(
+      { userId },
+      {
+        userId,
+        specialization: specialization.trim(),
+        price: Number(price)
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true
+      }
+    );
 
-    const doctor = await Doctor.create({
-      userId,
-      specialization,
-      price
-    });
-
-    return res.status(201).json(doctor);
+    return res.status(200).json({ msg: "Doctor profile saved", doctor });
   } catch (error) {
     return res.status(500).json({ msg: "Server error", error: error.message });
   }
